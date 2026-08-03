@@ -110,17 +110,23 @@ def map_stock_code_to_ticker(stock_code):
         else:
             return f"{raw_code}.SZ"
     if code.isdigit():
-        # 先試 .TW
-        ticker_tw = f"{code}.TW"
-        if yf.Ticker(ticker_tw).info.get("regularMarketPrice") is not None:
-            return ticker_tw
-        # 再試 .TWO
-        ticker_two = f"{code}.TWO"
-        if yf.Ticker(ticker_two).info.get("regularMarketPrice") is not None:
-            return ticker_two
-        # 如果都沒有，回傳原始代號
-        return code
-    return code
+        # 1. 先試上市 (.TW)
+        try:
+            df = yf.download(f"{code}.TW", period="1d", progress=False)
+            if not df.empty:
+                return f"{code}.TW"
+        except Exception:
+            pass
+
+        # 2. 再試上櫃 (.TWO)
+        try:
+            df = yf.download(f"{code}.TWO", period="1d", progress=False)
+            if not df.empty:
+                return f"{code}.TWO"
+        except Exception:
+            pass
+        # 3. 若都抓不到，預設先補 .TW (或回傳原始 code)
+        return f"{code}.TW"
 
 @st.cache_data(ttl=1800)
 def fetch_ticker_history(ticker_symbol, period="6mo"):
