@@ -110,7 +110,16 @@ def map_stock_code_to_ticker(stock_code):
         else:
             return f"{raw_code}.SZ"
     if code.isdigit():
-        return f"{code}.TW"
+        # 先試 .TW
+        ticker_tw = f"{code}.TW"
+        if yf.Ticker(ticker_tw).info.get("regularMarketPrice") is not None:
+            return ticker_tw
+        # 再試 .TWO
+        ticker_two = f"{code}.TWO"
+        if yf.Ticker(ticker_two).info.get("regularMarketPrice") is not None:
+            return ticker_two
+        # 如果都沒有，回傳原始代號
+        return code
     return code
 
 @st.cache_data(ttl=1800)
