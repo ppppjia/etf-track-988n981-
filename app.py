@@ -165,29 +165,26 @@ def fetch_ticker_history(ticker_symbol, period="6mo"):
         st.error(f"獲取 {ticker_symbol} 股價失敗: {e}")
         return None
 
-def add_ma_lines(fig, df, row=1, col=1):
+def add_ma_lines_custom(fig, x_series, close_prices, row=1, col=1):
     """
-    計算並添加 MA5, MA15, MA25, MA50 均線到 Plotly 圖表中
+    計算並添加 MA5, MA15, MA25, MA50 均線到 Plotly 分類軸圖表中
     """
-    if df is not None and not df.empty:
-        close_prices = df['Close']
-        ma_configs = [
-            (5, '#fef08a', 'MA5'),
-            (15, '#f97316', 'MA15'),
-            (25, '#a855f7', 'MA25'),
-            (50, '#3b82f6', 'MA50')
-        ]
-        for window, color, name in ma_configs:
-            # 使用 pandas 的 rolling 來計算移動平均線
-            ma = close_prices.rolling(window=window).mean()
-            fig.add_trace(go.Scatter(
-                x=df.index,
-                y=ma,
-                name=name,
-                line=dict(color=color, width=1.2, shape='spline'),
-                opacity=0.8,
-                hoverinfo="skip"
-            ), row=row, col=col)
+    ma_configs = [
+        (5, '#fef08a', 'MA5'),
+        (15, '#f97316', 'MA15'),
+        (25, '#a855f7', 'MA25'),
+        (50, '#3b82f6', 'MA50')
+    ]
+    for window, color, name in ma_configs:
+        ma = close_prices.rolling(window=window).mean()
+        fig.add_trace(go.Scatter(
+            x=x_series,
+            y=ma,
+            name=name,
+            line=dict(color=color, width=1.2, shape='linear'),
+            opacity=0.8,
+            hoverinfo="skip"
+        ), row=row, col=col)
 
 # ----------------- 側邊欄與標頭 -----------------
 with st.sidebar:
@@ -325,13 +322,16 @@ else:
         
         # 1. 繪製 ETF K線走勢 (加入均線功能)
         etf_history = fetch_ticker_history(etf_info["ticker"], period=selected_period)
-        if etf_history is not None:
+        if etf_history is not None and not etf_history.empty:
             fig_etf = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                     vertical_spacing=0.08, row_heights=[0.7, 0.3])
             
+            # 格式化日期字串 (YYYY-MM-DD)
+            etf_dates = etf_history.index.strftime('%Y-%m-%d')
+
             # K線圖
             fig_etf.add_trace(go.Candlestick(
-                x=etf_history.index,
+                x=etf_dates,
                 open=etf_history['Open'],
                 high=etf_history['High'],
                 low=etf_history['Low'],
@@ -344,11 +344,11 @@ else:
             ), row=1, col=1)
             
             # 添加 MA 均線 (MA5, MA15, MA25, MA50)
-            add_ma_lines(fig_etf, etf_history, row=1, col=1)
+            add_ma_lines_custom(fig_etf, etf_dates, etf_history['Close'], row=1, col=1)
             
             # 成交量
             fig_etf.add_trace(go.Bar(
-                x=etf_history.index,
+                x=etf_dates,
                 y=etf_history['Volume'],
                 name="成交量",
                 marker_color='rgba(100, 150, 200, 0.4)'
@@ -371,6 +371,7 @@ else:
             
             fig_etf.update_xaxes(
                 type='category',
+                nticks=10,
                 fixedrange=True, 
                 gridcolor='rgba(255,255,255,0.1)',
                 showspikes=True,
@@ -445,10 +446,22 @@ else:
             df_hist = pd.DataFrame(holding_history)
             df_hist['date'] = pd.to_datetime(df_hist['date'])
             
+            # 【關鍵對齊】：以持股歷史 (df_hist) 為主，對齊個股股價 (stock_history)
+            if stock_history is not None and not stock_history.empty:
+                stock_history_df = stock_history.reset_index()
+                stock_history_df['Date'] = pd.to_datetime(stock_history_df['Date']).dt.tz_localize(None)
+                
+                # Left join 對齊日期
+                df_merged = pd.merge(df_hist, stock_history_df, left_on='date', right_on='Date', how='left')
+                # 缺失值向前/向後補齊以確保連續
+                df_merged[['Open', 'High', 'Low', 'Close']] = df_merged[['Open', 'High', 'Low', 'Close']].ffill().bfill()
+            else:
+                df_merged = df_hist.copy()
+            
+            # 建立分類軸共用的 X 軸日期字串 (YYYY-MM-DD)
+            x_dates = df_merged['date'].dt.strftime('%Y-%m-%d')
+
             # 使用 plotly 繪製同步對齊的雙軸/雙圖表
-            # 第一列: 個股價格 K 線圖 + MA 均線
-            # 第二列: ETF 持股量 (Area)
-            # 第三列: 每日買賣變動 (Bar)
             fig_detail = make_subplots(
                 rows=3, cols=1, 
                 shared_xaxes=True, 
@@ -456,14 +469,14 @@ else:
                 row_heights=[0.5, 0.25, 0.25]
             )
             
-            # 1. K線圖 (Row 1) - 若成功抓取股價則繪製 K 線，否則畫出佔位提示
+            # 1. K線圖 (Row 1)
             if stock_history is not None and not stock_history.empty:
                 fig_detail.add_trace(go.Candlestick(
-                    x=stock_history.index,
-                    open=stock_history['Open'],
-                    high=stock_history['High'],
-                    low=stock_history['Low'],
-                    close=stock_history['Close'],
+                    x=x_dates,
+                    open=df_merged['Open'],
+                    high=df_merged['High'],
+                    low=df_merged['Low'],
+                    close=df_merged['Close'],
                     increasing_line_color='#f43f5e',
                     increasing_fillcolor='#f43f5e',
                     decreasing_line_color='#10b981',
@@ -471,23 +484,22 @@ else:
                     name="個股價格 (K線)"
                 ), row=1, col=1)
                 
-                # 添加個股 MA 均線 (MA5, MA15, MA25, MA50)
-                add_ma_lines(fig_detail, stock_history, row=1, col=1)
+                # 添加個股 MA 均線
+                add_ma_lines_custom(fig_detail, x_dates, df_merged['Close'], row=1, col=1)
             else:
-                # 若 Yahoo Finance 被擋，於 K 線圖區繪製文字提示
                 fig_detail.add_annotation(
                     text=f"無法獲取 {yf_stock_ticker} 的 Yahoo 歷史股價<br>（可能由於雲端 IP 存取受限，下方持股趨勢正常顯示）",
                     xref="x", yref="y",
-                    x=df_hist['date'].iloc[len(df_hist)//2] if not df_hist.empty else datetime.date.today(),
+                    x=x_dates.iloc[len(x_dates)//2] if not x_dates.empty else "",
                     y=1, showarrow=False,
                     font=dict(size=14, color="yellow"),
                     row=1, col=1
                 )
             
-            # 2. 歷史持股量 (Row 2) - 使用面積圖展現持股堆疊感
+            # 2. 歷史持股量 (Row 2)
             fig_detail.add_trace(go.Scatter(
-                x=df_hist['date'],
-                y=df_hist['shares'],
+                x=x_dates,
+                y=df_merged['shares'],
                 mode='lines',
                 fill='tozeroy',
                 fillcolor='rgba(201, 24, 74, 0.2)',
@@ -496,11 +508,10 @@ else:
             ), row=2, col=1)
             
             # 3. 每日加減倉柱狀圖 (Row 3)
-            # 依變動大小設置紅綠顏色 (加倉紅色，減倉綠色)
-            colors = ['#c9184a' if val > 0 else '#2b9348' for val in df_hist['change']]
+            colors = ['#c9184a' if val > 0 else '#2b9348' for val in df_merged['change']]
             fig_detail.add_trace(go.Bar(
-                x=df_hist['date'],
-                y=df_hist['change'],
+                x=x_dates,
+                y=df_merged['change'],
                 marker_color=colors,
                 name="每日加減倉股數"
             ), row=3, col=1)
@@ -513,16 +524,16 @@ else:
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 template="plotly_dark",
-                hovermode="x",
+                hovermode="x unified",
                 legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1)
             )
             
-            # 強制將所有子圖綁定到同一個 X 軸 (xaxis="x")，以實現垂直貫穿的游標虛線
+            # 強制將所有子圖綁定到同一個 X 軸 (xaxis="x")
             fig_detail.update_traces(xaxis="x")
             
-            # 設定固定範圍，禁止縮放
             fig_detail.update_xaxes(
                 type='category',
+                nticks=10,
                 fixedrange=True, 
                 gridcolor='rgba(255,255,255,0.08)',
                 showspikes=True,
@@ -534,7 +545,7 @@ else:
             )
             fig_detail.update_yaxes(fixedrange=True, gridcolor='rgba(255,255,255,0.08)')
             
-            # 使用 Streamlit 渲染標題，避免與 Plotly 內建圖例重疊
+            # 使用 Streamlit 渲染標題
             st.markdown(f"##### 🔍 {selected_stock_code} {selected_stock_name} 進出與持股趨勢對齊 ({selected_period_label})")
             st.plotly_chart(fig_detail, use_container_width=True, config={'displayModeBar': False})
             
