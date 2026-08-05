@@ -570,12 +570,24 @@ else:
             # 格式化數值展示
             df_hist_display['shares'] = df_hist_display['shares'].map('{:,.0f}'.format)
             df_hist_display['change'] = df_hist_display['change'].map(lambda x: f"+{x:,.0f}" if x > 0 else f"{x:,.0f}" if x < 0 else "0")
-            df_hist_display['weight'] = df_hist_display['weight'].map('{:.2f}%'.format)
             
-            # 重命名欄位
-            df_hist_display.columns = ["日期", "持有股數 (股)", "持股比例 (%)", "當日進出變化 (股)"]
+            # 安全處理 weight 欄位 (避免有些歷史紀錄無 weight 欄位)
+            if 'weight' in df_hist_display.columns:
+                df_hist_display['weight'] = df_hist_display['weight'].map('{:.2f}%'.format)
             
-            st.dataframe(df_hist_display.set_index("日期"), use_container_width=True)
+            # 改用 rename 只重命名我們需要的欄位，避免欄位數量對不上的 ValueError
+            rename_map = {
+                "date": "日期",
+                "shares": "持有股數 (股)",
+                "weight": "持股比例 (%)",
+                "change": "當日進出變化 (股)"
+            }
+            df_hist_display = df_hist_display.rename(columns=rename_map)
+            
+            # 只篩選出要在表格展示的中文欄位
+            display_cols = [c for c in ["日期", "持有股數 (股)", "持股比例 (%)", "當日進出變化 (股)"] if c in df_hist_display.columns]
+            
+            st.dataframe(df_hist_display[display_cols].set_index("日期"), use_container_width=True)
             
         else:
             st.info(f"無法載入 {selected_stock_code} {selected_stock_name} 的歷史持股資料。")
