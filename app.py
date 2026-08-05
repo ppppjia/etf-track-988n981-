@@ -326,7 +326,7 @@ else:
             fig_etf = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                     vertical_spacing=0.08, row_heights=[0.7, 0.3])
             
-            # 格式化日期字串 (YYYY-MM-DD)
+            # 格式化日期字串 (YYYY-MM-DD) 作為分類軸 X
             etf_dates = etf_history.index.strftime('%Y-%m-%d')
 
             # K線圖
@@ -366,7 +366,7 @@ else:
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             
-            # 強制將所有子圖綁定到同一個 X 軸 (xaxis="x")，以實現垂直貫穿的游標虛線
+            # 強制將所有子圖綁定到同一個 X 軸 (xaxis="x")
             fig_etf.update_traces(xaxis="x")
             
             fig_etf.update_xaxes(
@@ -383,7 +383,7 @@ else:
             )
             fig_etf.update_yaxes(fixedrange=True, gridcolor='rgba(255,255,255,0.1)')
             
-            # 使用 Streamlit 渲染標題，避免與 Plotly 內建圖例重疊
+            # 使用 Streamlit 渲染標題
             st.markdown(f"##### 📈 {selected_etf_code} {etf_info['name']} 價格走勢 ({selected_period_label})")
             st.plotly_chart(fig_etf, use_container_width=True, config={'displayModeBar': False})
         else:
@@ -446,20 +446,32 @@ else:
             df_hist = pd.DataFrame(holding_history)
             df_hist['date'] = pd.to_datetime(df_hist['date'])
             
-            # 【關鍵對齊】：以持股歷史 (df_hist) 為主，對齊個股股價 (stock_history)
+            # 🎯【核心邏輯修改】：以 K 線的交易日為主體做 Left Join
             if stock_history is not None and not stock_history.empty:
+                # 1. 整理 K 線資料
                 stock_history_df = stock_history.reset_index()
-                stock_history_df['Date'] = pd.to_datetime(stock_history_df['Date']).dt.tz_localize(None)
+                stock_history_df['Date_str'] = pd.to_datetime(stock_history_df['Date']).dt.strftime('%Y-%m-%d')
                 
-                # Left join 對齊日期
-                df_merged = pd.merge(df_hist, stock_history_df, left_on='date', right_on='Date', how='left')
-                # 缺失值向前/向後補齊以確保連續
-                df_merged[['Open', 'High', 'Low', 'Close']] = df_merged[['Open', 'High', 'Low', 'Close']].ffill().bfill()
+                # 2. 整理持股資料
+                df_hist['date_str'] = df_hist['date'].dt.strftime('%Y-%m-%d')
+                
+                # 3. 以 K 線 (stock_history_df) 為主體進行 left merge，確保 X 軸就是 K 線的所有交易日
+                df_merged = pd.merge(stock_history_df, df_hist, left_on='Date_str', right_on='date_str', how='left')
+                
+                # 4. 處理持股資料缺失值（沒抓到持股紀錄的日子：持股數向前補齊、每日變動補 0）
+                df_merged['shares'] = df_merged['shares'].ffill().fillna(0)
+                df_merged['change'] = df_merged['change'].fillna(0)
+                
+                # X 軸為 K 線交易日字串
+                x_dates = df_merged['Date_str']
             else:
+                # 若無 K 線，備用退回持股紀錄的日期
                 df_merged = df_hist.copy()
-            
-            # 建立分類軸共用的 X 軸日期字串 (YYYY-MM-DD)
-            x_dates = df_merged['date'].dt.strftime('%Y-%m-%d')
+                x_dates = df_merged['date'].dt.strftime('%Y-%m-%d')
+                df_merged['Open'] = 0
+                df_merged['High'] = 0
+                df_merged['Low'] = 0
+                df_merged['Close'] = 0
 
             # 使用 plotly 繪製同步對齊的雙軸/雙圖表
             fig_detail = make_subplots(
@@ -469,7 +481,7 @@ else:
                 row_heights=[0.5, 0.25, 0.25]
             )
             
-            # 1. K線圖 (Row 1)
+            # 1. K線圖 (Row 1) - 完全以 K線交易日畫出來
             if stock_history is not None and not stock_history.empty:
                 fig_detail.add_trace(go.Candlestick(
                     x=x_dates,
@@ -496,7 +508,7 @@ else:
                     row=1, col=1
                 )
             
-            # 2. 歷史持股量 (Row 2)
+            # 2. 歷史持股量 (Row 2) - 對齊 K線交易日
             fig_detail.add_trace(go.Scatter(
                 x=x_dates,
                 y=df_merged['shares'],
@@ -507,7 +519,7 @@ else:
                 name="ETF 持股股數"
             ), row=2, col=1)
             
-            # 3. 每日加減倉柱狀圖 (Row 3)
+            # 3. 每日加減倉柱狀圖 (Row 3) - 對齊 K線交易日
             colors = ['#c9184a' if val > 0 else '#2b9348' for val in df_merged['change']]
             fig_detail.add_trace(go.Bar(
                 x=x_dates,
