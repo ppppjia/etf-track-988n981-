@@ -109,6 +109,23 @@ def map_stock_code_to_ticker(stock_code):
             return f"{raw_code}.SS"
         else:
             return f"{raw_code}.SZ"
+    if code.endswith(" HK"):  # 香港（自動補滿四碼，如 700 HK -> 0700.HK）
+        raw_code = code.replace(" HK", "")
+        return f"{raw_code.zfill(4)}.HK"
+    if code.endswith(" LN"):  # 英國倫敦
+        return code.replace(" LN", ".L")
+    if code.endswith(" AU"):  # 澳洲
+        return code.replace(" AU", ".AX")
+    if code.endswith(" CN"):  # 加拿大多倫多
+        return code.replace(" CN", ".TO")
+    if code.endswith(" SP"):  # 新加坡
+        return code.replace(" SP", ".SI")
+    if code.endswith(" FP"):  # 法國巴黎
+        return code.replace(" FP", ".PA")
+    if code.endswith(" NA"):  # 荷蘭阿姆斯特丹
+        return code.replace(" NA", ".AS")
+    if code.endswith(" SW"):  # 瑞士
+        return code.replace(" SW", ".SW")
     if code.isdigit():
         # 1. 先試上市 (.TW)
         try:
