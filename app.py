@@ -490,7 +490,7 @@ else:
                 y=df_hist['shares'],
                 mode='lines',
                 fill='tozeroy',
-                fillcolor='rgba(43, 147, 72, 0.2)',
+                fillcolor='rgba(201, 24, 74, 0.2)',
                 line=dict(color='#c9184a', width=2),
                 name="ETF 持股股數"
             ), row=2, col=1)
