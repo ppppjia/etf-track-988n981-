@@ -399,14 +399,14 @@ else:
         
         # 定義變動狀態顏色樣式
         def style_action(val):
-            if val == "加倉":
-                return "background-color: rgba(43, 147, 72, 0.2); color: #5ce65c; font-weight: bold; text-align: center;"
-            elif val == "新開倉":
-                return "background-color: rgba(58, 134, 200, 0.2); color: #5ca6e6; font-weight: bold; text-align: center;"
-            elif val == "減倉":
-                return "background-color: rgba(201, 24, 74, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
-            elif val == "清倉":
-                return "background-color: rgba(247, 127, 0, 0.2); color: #e6965c; font-weight: bold; text-align: center;"
+            if val == "加倉":  #加倉red color: #e65c5c
+                return "background-color: rgba(43, 147, 72, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
+            elif val == "新開倉": #新開倉orange color: #ffa500
+                return "background-color: rgba(58, 134, 200, 0.2); color: #ffa500; font-weight: bold; text-align: center;"
+            elif val == "減倉":   #減倉green color: #5ce65c
+                return "background-color: rgba(201, 24, 74, 0.2); color: #5ce65c; font-weight: bold; text-align: center;"
+            elif val == "清倉":   #清倉purple color: #FF00DA
+                return "background-color: rgba(247, 127, 0, 0.2); color: #FF00DA; font-weight: bold; text-align: center;"
             else:
                 return "color: #adb5bd; text-align: center;"
 
@@ -490,13 +490,13 @@ else:
                 mode='lines',
                 fill='tozeroy',
                 fillcolor='rgba(43, 147, 72, 0.2)',
-                line=dict(color='#2b9348', width=2),
+                line=dict(color='#c9184a', width=2),
                 name="ETF 持股股數"
             ), row=2, col=1)
             
             # 3. 每日加減倉柱狀圖 (Row 3)
-            # 依變動大小設置紅綠顏色 (加倉綠色，減倉紅色)
-            colors = ['#2b9348' if val > 0 else '#c9184a' for val in df_hist['change']]
+            # 依變動大小設置紅綠顏色 (加倉紅色，減倉綠色)
+            colors = ['#c9184a' if val > 0 else '#2b9348' for val in df_hist['change']]
             fig_detail.add_trace(go.Bar(
                 x=df_hist['date'],
                 y=df_hist['change'],
