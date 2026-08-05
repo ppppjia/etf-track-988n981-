@@ -400,13 +400,13 @@ else:
         # 定義變動狀態顏色樣式
         def style_action(val):
             if val == "加倉":  #加倉red color: #e65c5c
-                return "background-color: rgba(43, 147, 72, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
+                return "background-color: rgba(201, 24, 74, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
             elif val == "新開倉": #新開倉orange color: #ffa500
-                return "background-color: rgba(58, 134, 200, 0.2); color: #ffa500; font-weight: bold; text-align: center;"
+                return "background-color: rgba(255,165,0, 0.2); color: #ffa500; font-weight: bold; text-align: center;"
             elif val == "減倉":   #減倉green color: #5ce65c
-                return "background-color: rgba(201, 24, 74, 0.2); color: #5ce65c; font-weight: bold; text-align: center;"
+                return "background-color: rgba(43, 147, 72, 0.2); color: #5ce65c; font-weight: bold; text-align: center;"
             elif val == "清倉":   #清倉purple color: #FF00DA
-                return "background-color: rgba(247, 127, 0, 0.2); color: #FF00DA; font-weight: bold; text-align: center;"
+                return "background-color: rgba(255, 0, 218, 0.2); color: #FF00DA; font-weight: bold; text-align: center;"
             else:
                 return "color: #adb5bd; text-align: center;"
 
