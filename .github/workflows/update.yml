@@ -2,7 +2,7 @@ name: Daily ETF Portfolio Update
 
 on:
   schedule:
-    - cron: '00 11 * * *' # 每天 UTC 11:00 (台北時間 19:00) 執行
+    - cron: '00 10 * * *' # 每天 UTC 10:00 (台北時間 18:00) 執行
   workflow_dispatch: # 允許您在 GitHub 網頁上手動點擊執行測試
 
 permissions:
