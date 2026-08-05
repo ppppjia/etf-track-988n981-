@@ -285,7 +285,7 @@ else:
 
     # ----------------- 頂部 ETF 概況卡片 -----------------
     st.markdown(f"## {etf_info['name']} ({selected_etf_code}) 投組追蹤儀表板")
-    st.caption(f"資料來源：統一投信官網投組 Excel 每日自動更新檔案，最新交易日：`{latest_date}`")
+    st.caption(f"資料來源：統一投信官網投組 Excel 每日(18:00)自動更新檔案，最新交易日：`{latest_date}`")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
