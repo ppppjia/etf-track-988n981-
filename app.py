@@ -370,6 +370,7 @@ else:
             fig_etf.update_traces(xaxis="x")
             
             fig_etf.update_xaxes(
+                type='category',
                 fixedrange=True, 
                 gridcolor='rgba(255,255,255,0.1)',
                 showspikes=True,
@@ -521,6 +522,7 @@ else:
             
             # 設定固定範圍，禁止縮放
             fig_detail.update_xaxes(
+                type='category',
                 fixedrange=True, 
                 gridcolor='rgba(255,255,255,0.08)',
                 showspikes=True,
