@@ -314,6 +314,26 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
+    # ----------------- 數據前置處理：成分股清單與編號選項 -----------------
+    # 篩選持股數 > 0 並依權重降序排序
+    stock_list = df_holdings[df_holdings["shares"] > 0].sort_values(by="weight", ascending=False).reset_index(drop=True)
+    
+    # 建立帶與明細表一模一樣編號的選單選項 (例如: "01. 2330 - 台積電 (權重: 8.50%)")
+    stock_options = [
+        f"{i+1:02d}. {row['stock_code']} - {row['stock_name']} (權重: {row['weight']:.2f}%)"
+        for i, row in stock_list.iterrows()
+    ]
+
+    # 初始化與維護 session_state["selected_stock_select"]
+    if "last_etf_code" not in st.session_state or st.session_state["last_etf_code"] != selected_etf_code:
+        st.session_state["last_etf_code"] = selected_etf_code
+        if stock_options:
+            st.session_state["selected_stock_select"] = stock_options[0]
+
+    if "selected_stock_select" not in st.session_state or st.session_state["selected_stock_select"] not in stock_options:
+        if stock_options:
+            st.session_state["selected_stock_select"] = stock_options[0]
+
     # ----------------- 左右兩欄佈局 -----------------
     left_col, right_col = st.columns([1, 1.1])
     
@@ -390,16 +410,14 @@ else:
             st.info(f"💡 無法獲取 {etf_info['ticker']} 的歷史價格資料。這可能是 Yahoo Finance 目前對雲端伺服器有限制，但不影響下方成分股名細。")
             
         # 2. 持股細目表格 (採用原生 Pandas Styler 來繪製，防 HTML 被剝離)
-        st.markdown("#### 成分股明細表")
+        st.markdown("#### 成分股明細表 (點擊列可自動切換右側分析標的)")
         
-        # 篩選要展示的資料
-        df_display = df_holdings.sort_values(by="weight", ascending=False).copy()
-        df_display = df_display[df_display["shares"] > 0]
+        # 篩選要展示的資料並加入編號
+        df_show = stock_list[["stock_code", "stock_name", "weight", "action", "shares"]].copy()
+        df_show.insert(0, "編號", [f"{i+1:02d}" for i in range(len(df_show))])
+        df_show.columns = ["編號", "股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
         
-        df_show = df_display[["stock_code", "stock_name", "weight", "action", "shares"]].copy()
-        df_show.columns = ["股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
-        
-        # 定義變動狀態顏色樣式
+        # 定義變動狀態顏色樣式與編號樣式
         def style_action(val):
             if val == "加倉":  #加倉red color: #e65c5c
                 return "background-color: rgba(201, 24, 74, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
@@ -412,27 +430,49 @@ else:
             else:
                 return "color: #adb5bd; text-align: center;"
 
+        def style_index(val):
+            return "color: #00d2ff; font-weight: 600; text-align: center;"
+
         # 套用樣式與格式化
         styled_df = df_show.style.map(
             style_action, subset=["變動狀態"]
+        ).map(
+            style_index, subset=["編號"]
         ).format({
             "持股權重 (%)": "{:.2f}%",
             "持有股數 (股)": "{:,.0f}"
         })
         
-        st.dataframe(styled_df, use_container_width=True, height=450)
+        # 啟用表格點選互動
+        selection_event = st.dataframe(
+            styled_df,
+            use_container_width=True,
+            height=450,
+            on_select="rerun",
+            selection_mode="single-row",
+            hide_index=True
+        )
+        
+        # 若使用者點選表格中的某一列，自動切換右側下拉選單
+        if selection_event and hasattr(selection_event, "selection") and selection_event.selection:
+            selected_rows = selection_event.selection.get("rows", [])
+            if selected_rows:
+                selected_idx = selected_rows[0]
+                if 0 <= selected_idx < len(stock_options):
+                    clicked_option = stock_options[selected_idx]
+                    if st.session_state.get("selected_stock_select") != clicked_option:
+                        st.session_state["selected_stock_select"] = clicked_option
+                        st.rerun()
 
     # ----------------- 右側欄個股詳細分析 -----------------
     with right_col:
         st.markdown("### 🔍 個股詳細進出與持股趨勢")
         
-        # 下拉選單供使用者點選想要查看的個股
-        stock_list = df_holdings[df_holdings["shares"] > 0].sort_values(by="weight", ascending=False)
-        stock_options = [f"{row['stock_code']} - {row['stock_name']} (權重: {row['weight']:.2f}%)" for _, row in stock_list.iterrows()]
-        
-        selected_stock_str = st.selectbox("選擇要分析的成分股：", stock_options)
+        # 下拉選單供使用者點選想要查看的個股 (綁定 session_state)
+        selected_stock_str = st.selectbox("選擇要分析的成分股：", stock_options, key="selected_stock_select")
         parts = selected_stock_str.split(" - ")
-        selected_stock_code = parts[0].strip()
+        code_part = parts[0].strip()
+        selected_stock_code = code_part.split(". ")[-1].strip() if ". " in code_part else code_part
         selected_stock_name = parts[1].split(" (")[0].strip()
         
         # 轉換成 yfinance 格式的股票代號
