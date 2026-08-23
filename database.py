@@ -55,13 +55,26 @@ def init_db(etf_code):
             PRIMARY KEY (date, stock_code)
         )
     """)
+
+    # 建立期貨資料表 (例如台指期貨)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS etf_futures (
+            date TEXT,                       -- 格式: YYYY-MM-DD
+            futures_code TEXT,               -- 期貨代號 (如 TX)
+            futures_name TEXT,               -- 期貨名稱
+            contracts INTEGER,               -- 期貨口數
+            weight REAL,                     -- 權重 (%)
+            contract_month TEXT,             -- 合約月份
+            PRIMARY KEY (date, futures_code)
+        )
+    """)
     
     conn.commit()
     conn.close()
 
-def save_etf_data(etf_code, date, summary_data, holdings):
+def save_etf_data(etf_code, date, summary_data, holdings, futures_list=None):
     """
-    儲存 ETF 的總結數據和持股清單。
+    儲存 ETF 的總結數據、持股清單與期貨資料。
     """
     init_db(etf_code)
     conn = get_connection(etf_code)
@@ -91,6 +104,21 @@ def save_etf_data(etf_code, date, summary_data, holdings):
                 holding["shares"],
                 holding["weight"]
             ))
+
+        # 3. 插入或更新期貨資料
+        if futures_list:
+            for fut in futures_list:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO etf_futures (date, futures_code, futures_name, contracts, weight, contract_month)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    date,
+                    fut["futures_code"],
+                    fut["futures_name"],
+                    fut["contracts"],
+                    fut["weight"],
+                    fut["contract_month"]
+                ))
             
         conn.commit()
     except Exception as e:
@@ -98,6 +126,26 @@ def save_etf_data(etf_code, date, summary_data, holdings):
         raise e
     finally:
         conn.close()
+
+def get_etf_futures_history(etf_code, futures_code="TX"):
+    """
+    取得該 ETF 指定期貨的歷史口數與權重變化紀錄，依日期升序排列。
+    """
+    db_path = get_db_path(etf_code)
+    if not os.path.exists(db_path):
+        return []
+        
+    conn = get_connection(etf_code)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT date, futures_code, futures_name, contracts, weight, contract_month
+        FROM etf_futures
+        WHERE futures_code = ?
+        ORDER BY date ASC
+    """, (futures_code,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def get_latest_date(etf_code):
     """
