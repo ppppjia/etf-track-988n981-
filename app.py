@@ -13,7 +13,8 @@ from database import (
     get_etf_summary,
     get_holdings_by_date,
     get_stock_holding_history,
-    get_all_dates
+    get_all_dates,
+    get_etf_futures_history
 )
 from downloader import run_downloader
 
@@ -429,71 +430,157 @@ else:
         else:
             st.info(f"💡 無法獲取 {etf_info['ticker']} 的歷史價格資料。這可能是 Yahoo Finance 目前對雲端伺服器有限制，但不影響下方成分股名細。")
             
-        # 2. 持股細目表格 (採用原生 Pandas Styler 來繪製，防 HTML 被剝離)
-        st.markdown("#### 成分股明細表 (點擊列可自動切換右側分析標的)")
-        
-        # 篩選要展示的資料，並加入「當前K」標記欄位與「編號」欄位
-        df_show = stock_list[["stock_code", "stock_name", "weight", "action", "shares"]].copy()
-        
-        current_k_col = ["🎯" if i == active_idx else "" for i in range(len(df_show))]
-        df_show.insert(0, "當前K", current_k_col)
-        df_show.insert(1, "編號", [f"{i+1:02d}" for i in range(len(df_show))])
-        df_show.columns = ["當前K", "編號", "股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
-        
-        # 定義變動狀態、編號、當前K 顏色樣式
-        def style_action(val):
-            if val == "加倉":  #加倉red color: #e65c5c
-                return "background-color: rgba(201, 24, 74, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
-            elif val == "新開倉": #新開倉orange color: #ffa500
-                return "background-color: rgba(255,165,0, 0.2); color: #ffa500; font-weight: bold; text-align: center;"
-            elif val == "減倉":   #減倉green color: #5ce65c
-                return "background-color: rgba(43, 147, 72, 0.2); color: #5ce65c; font-weight: bold; text-align: center;"
-            elif val == "清倉":   #清倉purple color: #FF00DA
-                return "background-color: rgba(255, 0, 218, 0.2); color: #FF00DA; font-weight: bold; text-align: center;"
-            else:
-                return "color: #adb5bd; text-align: center;"
+        # 2. 持股細目與期貨資料展示 (00981A 啟用 Tabs 標籤頁以展示期貨口數)
+        if selected_etf_code == "00981A":
+            tab_holdings, tab_futures = st.tabs(["📋 成分股明細表 (點擊列連動)", "🔮 台指期貨口數與權重"])
+        else:
+            tab_holdings, tab_futures = None, None
 
-        def style_index(val):
-            return "color: #00d2ff; font-weight: 600; text-align: center;"
+        # 渲染成分股明細表邏輯的輔助函式，方便在 Tab 內或直接渲染
+        def render_holdings_table():
+            # 篩選要展示的資料，並加入「當前K」標記欄位與「編號」欄位
+            df_show = stock_list[["stock_code", "stock_name", "weight", "action", "shares"]].copy()
+            
+            current_k_col = ["🎯" if i == active_idx else "" for i in range(len(df_show))]
+            df_show.insert(0, "當前K", current_k_col)
+            df_show.insert(1, "編號", [f"{i+1:02d}" for i in range(len(df_show))])
+            df_show.columns = ["當前K", "編號", "股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
+            
+            # 定義變動狀態、編號、當前K 顏色樣式
+            def style_action(val):
+                if val == "加倉":  #加倉red color: #e65c5c
+                    return "background-color: rgba(201, 24, 74, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
+                elif val == "新開倉": #新開倉orange color: #ffa500
+                    return "background-color: rgba(255,165,0, 0.2); color: #ffa500; font-weight: bold; text-align: center;"
+                elif val == "減倉":   #減倉green color: #5ce65c
+                    return "background-color: rgba(43, 147, 72, 0.2); color: #5ce65c; font-weight: bold; text-align: center;"
+                elif val == "清倉":   #清倉purple color: #FF00DA
+                    return "background-color: rgba(255, 0, 218, 0.2); color: #FF00DA; font-weight: bold; text-align: center;"
+                else:
+                    return "color: #adb5bd; text-align: center;"
 
-        def style_current_k(val):
-            return "color: #ffcc00; font-weight: bold; text-align: center; font-size: 1.1rem;"
+            def style_index(val):
+                return "color: #00d2ff; font-weight: 600; text-align: center;"
 
-        # 套用樣式與格式化
-        styled_df = df_show.style.map(
-            style_action, subset=["變動狀態"]
-        ).map(
-            style_index, subset=["編號"]
-        ).map(
-            style_current_k, subset=["當前K"]
-        ).format({
-            "持股權重 (%)": "{:.2f}%",
-            "持有股數 (股)": "{:,.0f}"
-        })
-        
-        # 啟用表格點選互動 (key 綁定 holdings_table)
-        selection_event = st.dataframe(
-            styled_df,
-            key="holdings_table",
-            use_container_width=True,
-            height=450,
-            on_select="rerun",
-            selection_mode="single-row",
-            hide_index=True
-        )
-        
-        # 🎯 雙向連動關鍵邏輯：若使用者點擊左側表格中的某一列 -> 連動切換右側下拉選單與 K 線
-        if selection_event and hasattr(selection_event, "selection") and selection_event.selection:
-            selected_rows = selection_event.selection.get("rows", [])
-            prev_rows = st.session_state.get("prev_table_rows", [])
-            if selected_rows and selected_rows != prev_rows:
-                selected_idx = selected_rows[0]
-                if 0 <= selected_idx < len(stock_options):
-                    clicked_option = stock_options[selected_idx]
-                    st.session_state["selected_stock_select"] = clicked_option
-                    st.session_state["prev_selected_stock"] = clicked_option
-                    st.session_state["prev_table_rows"] = [selected_idx]
-                    st.rerun()
+            def style_current_k(val):
+                return "color: #ffcc00; font-weight: bold; text-align: center; font-size: 1.1rem;"
+
+            # 套用樣式與格式化
+            styled_df = df_show.style.map(
+                style_action, subset=["變動狀態"]
+            ).map(
+                style_index, subset=["編號"]
+            ).map(
+                style_current_k, subset=["當前K"]
+            ).format({
+                "持股權重 (%)": "{:.2f}%",
+                "持有股數 (股)": "{:,.0f}"
+            })
+            
+            # 啟用表格點選互動 (key 綁定 holdings_table)
+            selection_event = st.dataframe(
+                styled_df,
+                key="holdings_table",
+                use_container_width=True,
+                height=450,
+                on_select="rerun",
+                selection_mode="single-row",
+                hide_index=True
+            )
+            
+            # 🎯 雙向連動關鍵邏輯：若使用者點擊左側表格中的某一列 -> 連動切換右側下拉選單與 K 線
+            if selection_event and hasattr(selection_event, "selection") and selection_event.selection:
+                selected_rows = selection_event.selection.get("rows", [])
+                prev_rows = st.session_state.get("prev_table_rows", [])
+                if selected_rows and selected_rows != prev_rows:
+                    selected_idx = selected_rows[0]
+                    if 0 <= selected_idx < len(stock_options):
+                        clicked_option = stock_options[selected_idx]
+                        st.session_state["selected_stock_select"] = clicked_option
+                        st.session_state["prev_selected_stock"] = clicked_option
+                        st.session_state["prev_table_rows"] = [selected_idx]
+                        st.rerun()
+
+        # 開始渲染明細或期貨
+        if tab_holdings is not None:
+            with tab_holdings:
+                render_holdings_table()
+            with tab_futures:
+                futures_history = get_etf_futures_history(selected_etf_code, "TX")
+                if futures_history:
+                    df_fut = pd.DataFrame(futures_history)
+                    df_fut['date'] = pd.to_datetime(df_fut['date'])
+                    df_fut_sorted = df_fut.sort_values(by="date", ascending=True)
+                    
+                    x_dates = df_fut_sorted['date'].dt.strftime('%Y-%m-%d')
+                    
+                    # 建立雙子圖
+                    fig_fut = make_subplots(
+                        rows=2, cols=1,
+                        shared_xaxes=True,
+                        vertical_spacing=0.12,
+                        row_heights=[0.5, 0.5]
+                    )
+                    
+                    # 子圖1: 口數變化
+                    fig_fut.add_trace(go.Scatter(
+                        x=x_dates,
+                        y=df_fut_sorted['contracts'],
+                        mode='lines+markers',
+                        name='期貨口數 (口)',
+                        line=dict(color='#ff5c8a', width=2),
+                        fill='tozeroy',
+                        fillcolor='rgba(255, 92, 138, 0.15)'
+                    ), row=1, col=1)
+                    
+                    # 子圖2: 權重變化
+                    fig_fut.add_trace(go.Scatter(
+                        x=x_dates,
+                        y=df_fut_sorted['weight'],
+                        mode='lines+markers',
+                        name='期貨權重 (%)',
+                        line=dict(color='#00b4d8', width=2),
+                        fill='tozeroy',
+                        fillcolor='rgba(0, 180, 216, 0.15)'
+                    ), row=2, col=1)
+                    
+                    fig_fut.update_layout(
+                        xaxis_rangeslider_visible=False,
+                        height=420,
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        template="plotly_dark",
+                        hovermode="x unified",
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    
+                    fig_fut.update_xaxes(type='category', gridcolor='rgba(255,255,255,0.08)')
+                    fig_fut.update_yaxes(gridcolor='rgba(255,255,255,0.08)')
+                    
+                    st.markdown("##### 📈 台指期貨 (TX) 歷史曝險口數與權重變化")
+                    st.plotly_chart(fig_fut, use_container_width=True, config={'displayModeBar': False})
+                    
+                    # 近期明細表
+                    st.markdown("###### 🕒 近期期貨口數變化紀錄 (倒序)")
+                    df_fut_table = df_fut_sorted.copy().sort_values(by="date", ascending=False)
+                    df_fut_table['date'] = df_fut_table['date'].dt.strftime('%Y-%m-%d')
+                    df_fut_table = df_fut_table.rename(columns={
+                        "date": "日期",
+                        "futures_name": "期貨名稱",
+                        "contracts": "口數 (口)",
+                        "weight": "權重 (%)",
+                        "contract_month": "合約月份"
+                    })
+                    st.dataframe(
+                        df_fut_table[["日期", "期貨名稱", "口數 (口)", "權重 (%)", "合約月份"]].set_index("日期"),
+                        use_container_width=True
+                    )
+                else:
+                    st.info("💡 目前資料庫中無此 ETF 的期貨歷史數據。")
+        else:
+            st.markdown("#### 成分股明細表 (點擊列可自動切換右側分析標的)")
+            render_holdings_table()
 
     # ----------------- 右側欄個股詳細分析 -----------------
     with right_col:
