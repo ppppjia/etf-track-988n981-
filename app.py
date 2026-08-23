@@ -415,7 +415,7 @@ else:
         # 篩選要展示的資料並加入編號
         df_show = stock_list[["stock_code", "stock_name", "weight", "action", "shares"]].copy()
         df_show.insert(0, "編號", [f"{i+1:02d}" for i in range(len(df_show))])
-        df_show.columns = ["勾選看k線","編號", "股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
+        df_show.columns = ["編號", "股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
         
         # 定義變動狀態顏色樣式與編號樣式
         def style_action(val):
