@@ -324,15 +324,35 @@ else:
         for i, row in stock_list.iterrows()
     ]
 
-    # 初始化與維護 session_state["selected_stock_select"]
+    # 當 ETF 切換時重置狀態
     if "last_etf_code" not in st.session_state or st.session_state["last_etf_code"] != selected_etf_code:
         st.session_state["last_etf_code"] = selected_etf_code
         if stock_options:
             st.session_state["selected_stock_select"] = stock_options[0]
+            st.session_state["prev_selected_stock"] = stock_options[0]
+            st.session_state["holdings_table"] = {"selection": {"rows": [0], "columns": []}}
+            st.session_state["prev_table_rows"] = [0]
 
+    # 初始化預設值
     if "selected_stock_select" not in st.session_state or st.session_state["selected_stock_select"] not in stock_options:
         if stock_options:
             st.session_state["selected_stock_select"] = stock_options[0]
+
+    # 🎯 雙向連動關鍵邏輯：檢查右側下拉選單是否被使用者主動切換
+    if "prev_selected_stock" in st.session_state:
+        if st.session_state["selected_stock_select"] != st.session_state["prev_selected_stock"]:
+            if st.session_state["selected_stock_select"] in stock_options:
+                new_idx = stock_options.index(st.session_state["selected_stock_select"])
+                # 使用者在右側下拉選單點選新標的 -> 自動強制左側表格勾選/選取狀態切換至該標的
+                st.session_state["holdings_table"] = {"selection": {"rows": [new_idx], "columns": []}}
+                st.session_state["prev_selected_stock"] = st.session_state["selected_stock_select"]
+                st.session_state["prev_table_rows"] = [new_idx]
+
+    # 取得當前選中的標的 index
+    if st.session_state["selected_stock_select"] in stock_options:
+        active_idx = stock_options.index(st.session_state["selected_stock_select"])
+    else:
+        active_idx = 0
 
     # ----------------- 左右兩欄佈局 -----------------
     left_col, right_col = st.columns([1, 1.1])
@@ -412,12 +432,15 @@ else:
         # 2. 持股細目表格 (採用原生 Pandas Styler 來繪製，防 HTML 被剝離)
         st.markdown("#### 成分股明細表 (點擊列可自動切換右側分析標的)")
         
-        # 篩選要展示的資料並加入編號
+        # 篩選要展示的資料，並加入「當前K」標記欄位與「編號」欄位
         df_show = stock_list[["stock_code", "stock_name", "weight", "action", "shares"]].copy()
-        df_show.insert(0, "編號", [f"{i+1:02d}" for i in range(len(df_show))])
-        df_show.columns = ["編號", "股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
         
-        # 定義變動狀態顏色樣式與編號樣式
+        current_k_col = ["🎯" if i == active_idx else "" for i in range(len(df_show))]
+        df_show.insert(0, "當前K", current_k_col)
+        df_show.insert(1, "編號", [f"{i+1:02d}" for i in range(len(df_show))])
+        df_show.columns = ["當前K", "編號", "股票代號", "股票名稱", "持股權重 (%)", "變動狀態", "持有股數 (股)"]
+        
+        # 定義變動狀態、編號、當前K 顏色樣式
         def style_action(val):
             if val == "加倉":  #加倉red color: #e65c5c
                 return "background-color: rgba(201, 24, 74, 0.2); color: #e65c5c; font-weight: bold; text-align: center;"
@@ -433,19 +456,25 @@ else:
         def style_index(val):
             return "color: #00d2ff; font-weight: 600; text-align: center;"
 
+        def style_current_k(val):
+            return "color: #ffcc00; font-weight: bold; text-align: center; font-size: 1.1rem;"
+
         # 套用樣式與格式化
         styled_df = df_show.style.map(
             style_action, subset=["變動狀態"]
         ).map(
             style_index, subset=["編號"]
+        ).map(
+            style_current_k, subset=["當前K"]
         ).format({
             "持股權重 (%)": "{:.2f}%",
             "持有股數 (股)": "{:,.0f}"
         })
         
-        # 啟用表格點選互動
+        # 啟用表格點選互動 (key 綁定 holdings_table)
         selection_event = st.dataframe(
             styled_df,
+            key="holdings_table",
             use_container_width=True,
             height=450,
             on_select="rerun",
@@ -453,16 +482,18 @@ else:
             hide_index=True
         )
         
-        # 若使用者點選表格中的某一列，自動切換右側下拉選單
+        # 🎯 雙向連動關鍵邏輯：若使用者點擊左側表格中的某一列 -> 連動切換右側下拉選單與 K 線
         if selection_event and hasattr(selection_event, "selection") and selection_event.selection:
             selected_rows = selection_event.selection.get("rows", [])
-            if selected_rows:
+            prev_rows = st.session_state.get("prev_table_rows", [])
+            if selected_rows and selected_rows != prev_rows:
                 selected_idx = selected_rows[0]
                 if 0 <= selected_idx < len(stock_options):
                     clicked_option = stock_options[selected_idx]
-                    if st.session_state.get("selected_stock_select") != clicked_option:
-                        st.session_state["selected_stock_select"] = clicked_option
-                        st.rerun()
+                    st.session_state["selected_stock_select"] = clicked_option
+                    st.session_state["prev_selected_stock"] = clicked_option
+                    st.session_state["prev_table_rows"] = [selected_idx]
+                    st.rerun()
 
     # ----------------- 右側欄個股詳細分析 -----------------
     with right_col:
