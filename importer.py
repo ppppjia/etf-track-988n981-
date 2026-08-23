@@ -107,6 +107,45 @@ def import_excel_file(file_path, etf_code=None):
                 
     print(f"解析到總結數據: {summary_data}")
     
+    # 3. 嘗試解析期貨資料
+    futures_list = []
+    futures_start_row = None
+    for r in range(1, sheet.max_row + 1):
+        row_vals = [sheet.cell(row=r, column=c).value for c in range(1, 6)]
+        row_vals_str = [str(v).strip() if v is not None else "" for v in row_vals]
+        # 檢查該列是否包含期貨代號標頭
+        if any("期貨代號" in s or ("期貨" in s and "代號" in s) for s in row_vals_str[:2]):
+            futures_start_row = r + 1
+            break
+            
+    if futures_start_row:
+        for r in range(futures_start_row, sheet.max_row + 1):
+            f_code = sheet.cell(row=r, column=1).value
+            f_code_str = str(f_code).strip() if f_code is not None else ""
+            # 遇到成分股標頭或空值時停止
+            if not f_code_str or f_code_str.startswith("註") or "成分股" in f_code_str or "代號" in f_code_str:
+                break
+            
+            f_name = sheet.cell(row=r, column=2).value
+            f_weight = sheet.cell(row=r, column=3).value
+            f_contracts = sheet.cell(row=r, column=4).value
+            f_month = sheet.cell(row=r, column=5).value
+            
+            clean_contracts = clean_number(f_contracts)
+            clean_f_weight = clean_number(f_weight)
+            
+            futures_list.append({
+                "futures_code": f_code_str,
+                "futures_name": str(f_name).strip() if f_name is not None else "",
+                "contracts": int(clean_contracts),
+                "weight": float(clean_f_weight),
+                "contract_month": str(f_month).strip() if f_month is not None else ""
+            })
+            
+    if futures_list:
+        print(f"成功解析到 {len(futures_list)} 筆期貨資料: {futures_list}")
+
+    # 4. 解析成分股持股資料
     holdings = []
     start_row = None
     
@@ -133,6 +172,7 @@ def import_excel_file(file_path, etf_code=None):
         code_str = str(code).strip()
         name_str = str(name).strip() if name is not None else ""
         
+        # 排除期貨項目 (TX) 及其他非個股項目
         if code_str.lower() in ("tx", "合計", "項目", "現金"):
             continue
             
@@ -148,6 +188,7 @@ def import_excel_file(file_path, etf_code=None):
         
     print(f"成功解析到 {len(holdings)} 檔成分股持股。")
     
-    save_etf_data(etf_code, trading_date, summary_data, holdings)
-    print(f"已成功將 {etf_code} 在 {trading_date} 的投組資料匯入資料庫。")
+    # 儲存資料（包含期貨清單）
+    save_etf_data(etf_code, trading_date, summary_data, holdings, futures_list=futures_list)
+    print(f"已成功將 {etf_code} 在 {trading_date} 的投組與期貨資料匯入資料庫。")
     return trading_date
